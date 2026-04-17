@@ -54,6 +54,7 @@
   "credit_limits",
   "internal_customer_section",
   "is_internal_customer",
+  "is_goodwill_customer",
   "represents_company",
   "column_break_70",
   "companies",
@@ -627,6 +628,12 @@
    "fieldname": "supplier_numbers_section",
    "fieldtype": "Section Break",
    "label": "Supplier Numbers"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_goodwill_customer",
+   "fieldtype": "Check",
+   "label": "Goodwill Customer"
   }
  ],
  "icon": "fa fa-user",
@@ -640,7 +647,7 @@
    "link_fieldname": "party"
   }
  ],
- "modified": "2026-03-09 17:15:26.040050",
+ "modified": "2026-04-16 16:30:26.333740",
  "modified_by": "Administrator",
  "module": "Selling",
  "name": "Customer",

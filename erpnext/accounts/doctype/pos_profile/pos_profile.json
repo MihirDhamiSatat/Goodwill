@@ -1,5 +1,6 @@
 {
  "actions": [],
+ "allow_import": 1,
  "allow_rename": 1,
  "autoname": "Prompt",
  "creation": "2013-05-24 12:15:51",
@@ -475,7 +476,7 @@
    "link_fieldname": "pos_profile"
   }
  ],
- "modified": "2026-02-10 14:24:48.597412",
+ "modified": "2026-04-14 11:26:58.870392",
  "modified_by": "Administrator",
  "module": "Accounts",
  "name": "POS Profile",

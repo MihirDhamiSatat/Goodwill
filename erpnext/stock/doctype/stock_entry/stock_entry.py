@@ -91,12 +91,9 @@ class StockEntry(StockController, SubcontractingInwardController):
 	from typing import TYPE_CHECKING
 
 	if TYPE_CHECKING:
-		from frappe.types import DF
-
-		from erpnext.stock.doctype.landed_cost_taxes_and_charges.landed_cost_taxes_and_charges import (
-			LandedCostTaxesandCharges,
-		)
+		from erpnext.stock.doctype.landed_cost_taxes_and_charges.landed_cost_taxes_and_charges import LandedCostTaxesandCharges
 		from erpnext.stock.doctype.stock_entry_detail.stock_entry_detail import StockEntryDetail
+		from frappe.types import DF
 
 		add_to_transit: DF.Check
 		additional_costs: DF.Table[LandedCostTaxesandCharges]
@@ -130,22 +127,9 @@ class StockEntry(StockController, SubcontractingInwardController):
 		project: DF.Link | None
 		purchase_order: DF.Link | None
 		purchase_receipt_no: DF.Link | None
-		purpose: DF.Literal[
-			"Material Issue",
-			"Material Receipt",
-			"Material Transfer",
-			"Material Transfer for Manufacture",
-			"Material Consumption for Manufacture",
-			"Manufacture",
-			"Repack",
-			"Send to Subcontractor",
-			"Disassemble",
-			"Receive from Customer",
-			"Return Raw Material to Customer",
-			"Subcontracting Delivery",
-			"Subcontracting Return",
-		]
+		purpose: DF.Literal["Material Issue", "Material Receipt", "Material Transfer", "Material Transfer for Manufacture", "Material Consumption for Manufacture", "Manufacture", "Repack", "Send to Subcontractor", "Disassemble", "Receive from Customer", "Return Raw Material to Customer", "Subcontracting Delivery", "Subcontracting Return"]
 		remarks: DF.Text | None
+		root_cause: DF.Literal["", "HO Mistake", "Store Mistake", "Transit Loss"]
 		sales_invoice_no: DF.Link | None
 		scan_barcode: DF.Data | None
 		select_print_heading: DF.Link | None
@@ -167,6 +151,7 @@ class StockEntry(StockController, SubcontractingInwardController):
 		total_outgoing_value: DF.Currency
 		use_multi_level_bom: DF.Check
 		value_difference: DF.Currency
+		verification_status: DF.Literal["Pending", "Verified", "Issue Found"]
 		work_order: DF.Link | None
 	# end: auto-generated types
 
