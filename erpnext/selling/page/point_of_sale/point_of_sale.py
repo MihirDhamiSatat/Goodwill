@@ -544,3 +544,116 @@ def get_customer_recent_transactions(customer):
 
 	invoices = order_results_by_posting_date(sales_invoices + pos_invoices)
 	return invoices
+
+
+@frappe.whitelist()
+def validate_pos_invoice_for_goodwill(doctype, docname):
+	"""
+	PREVENT POS INVOICE SUBMISSION FOR GOODWILL CUSTOMERS
+	Goodwill customers should only create Stock Entry, not Invoice
+	"""
+	if doctype not in ["POS Invoice", "Sales Invoice"]:
+		return True
+	
+	# Get the invoice document
+	invoice = frappe.get_doc(doctype, docname)
+	
+	# Check if customer is marked as goodwill customer
+	customer = invoice.customer
+	if customer:
+		is_goodwill_customer = frappe.db.get_value("Customer", customer, "is_goodwill_customer")
+		
+		if is_goodwill_customer:
+			# For goodwill customers, check if a goodwill stock entry exists
+			# If not, prevent invoice submission
+			has_goodwill_entry = frappe.db.exists("Stock Entry", {
+				"goodwill": ["!=", ""],
+				"docstatus": 1,
+				"creation": [">", frappe.utils.add_days(frappe.utils.now(), -1)]
+			})
+			
+			# Prevent POS Invoice submission for goodwill customers
+			frappe.throw(
+				f"<b>Goodwill Customer Cannot Submit Invoice</b><br>"
+				f"Customer '{customer}' is marked as a goodwill customer.<br>"
+				f"Please use the <b>Goodwill Entry</b> feature instead to create a Stock Entry.<br>"
+				f"<i>Note: POS invoices cannot be created for goodwill customers - only Stock Entries.</i>",
+				frappe.ValidationError
+			)
+
+
+@frappe.whitelist()
+def create_goodwill_stock_entry(goodwill_entry_id, items, customer, company, warehouse):
+	"""
+	Create Stock Entry (Material Issue) for goodwill distribution using VALUATION RATE
+	"""
+	import json
+	from frappe.utils import nowdate, nowtime
+	from erpnext.stock.stock_ledger import get_previous_sle
+	
+	# Parse items if it's a JSON string
+	if isinstance(items, str):
+		items = json.loads(items)
+	
+	# Validate inputs
+	if not goodwill_entry_id or not items:
+		frappe.throw("Goodwill Entry and items are required")
+	
+	# Get goodwill entry
+	goodwill = frappe.get_doc("Goodwill", goodwill_entry_id)
+	if goodwill.is_used:
+		frappe.throw(f"Goodwill Entry {goodwill_entry_id} has already been used")
+	
+	# Create Stock Entry
+	stock_entry = frappe.new_doc("Stock Entry")
+	stock_entry.stock_entry_type = "Goodwill Issue"
+	stock_entry.purpose = "Goodwill Issue"
+	stock_entry.company = company
+	stock_entry.posting_date = nowdate()
+	stock_entry.posting_time = nowtime()
+	stock_entry.remarks = f"Goodwill Distribution - Customer: {customer}, Goodwill: {goodwill_entry_id}"
+	stock_entry.goodwill = goodwill_entry_id
+	
+	total_amount = 0
+	
+	# Add items with valuation rate from cost price
+	for item in items:
+		item_code = item.get("item_code")
+		qty = float(item.get("qty", 0))
+		uom = item.get("uom")
+		
+		# Get valuation rate from stock ledger
+		prev_sle = get_previous_sle({
+			"item_code": item_code,
+			"warehouse": warehouse,
+			"posting_date": nowdate(),
+			"posting_time": nowtime(),
+		})
+		
+		rate = prev_sle.get("valuation_rate", 0) if prev_sle else 0
+		amount = qty * rate
+		total_amount += amount
+		
+		stock_entry.append("items", {
+			"item_code": item_code,
+			"qty": qty,
+			"uom": uom,
+			"s_warehouse": warehouse,
+			"basic_rate": rate,
+			"amount": amount,
+		})
+	
+	# Save and submit
+	stock_entry.insert(ignore_permissions=True)
+	stock_entry.submit()
+	
+	# Mark goodwill as used (use db.set_value to bypass submission lock on submitted doc)
+	frappe.db.set_value("Goodwill", goodwill_entry_id, "is_used", 1)
+	
+	frappe.msgprint(
+		f"Stock Entry <b>{stock_entry.name}</b> created for Goodwill Distribution<br>"
+		f"Total Cost: ₹{total_amount:.2f}<br>"
+		f"Stock reduced from: {warehouse}"
+	)
+	
+	return stock_entry.name

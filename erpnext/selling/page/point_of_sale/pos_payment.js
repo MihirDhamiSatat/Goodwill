@@ -270,6 +270,19 @@ erpnext.PointOfSale.Payment = class {
 			const paid_amount = doc.paid_amount;
 			const items = doc.items;
 
+			// CHECK IF GOODWILL CUSTOMER - PREVENT INVOICE SUBMISSION
+			const is_goodwill_customer = cur_pos.cart && cur_pos.cart.is_goodwill_customer;
+			const goodwill_entry_selected = cur_pos.cart && cur_pos.cart.goodwill_entry_selected;
+
+			if (is_goodwill_customer && !goodwill_entry_selected) {
+				frappe.show_alert({
+					indicator: "red",
+					message: __("Goodwill customer cannot submit invoice. Please select Goodwill Entry and proceed to checkout instead."),
+				});
+				frappe.utils.play_sound("error");
+				return;
+			}
+
 			if (
 				!items.length ||
 				(paid_amount == 0 &&
@@ -468,15 +481,112 @@ erpnext.PointOfSale.Payment = class {
 
 	checkout() {
 		const frm = this.events.get_frm();
-		frm.cscript.calculate_outstanding_amount();
-		frm.refresh_field("outstanding_amount");
-		frm.refresh_field("paid_amount");
-		frm.refresh_field("base_paid_amount");
-		this.events.toggle_other_sections(true);
-		this.toggle_component(true);
+		const is_goodwill_customer = cur_pos.cart && cur_pos.cart.is_goodwill_customer;
+		const goodwill_entry_selected = cur_pos.cart && cur_pos.cart.goodwill_entry_selected;
+		
+		// CHECK IF GOODWILL CUSTOMER - MUST CREATE STOCK ENTRY NOT INVOICE
+		if (is_goodwill_customer) {
+			if (goodwill_entry_selected) {
+				// Create stock entry for goodwill customer
+				this.create_goodwill_stock_entry(frm);
+			} else {
+				// Show error - goodwill entry is required
+				frappe.show_alert({
+					indicator: "red",
+					message: __("Goodwill Entry is required for goodwill customers. Please select a goodwill entry first."),
+				});
+				frappe.utils.play_sound("error");
+			}
+		} else {
+			// NORMAL POS FLOW - PROCEED TO PAYMENT
+			frm.cscript.calculate_outstanding_amount();
+			frm.refresh_field("outstanding_amount");
+			frm.refresh_field("paid_amount");
+			frm.refresh_field("base_paid_amount");
+			this.events.toggle_other_sections(true);
+			this.toggle_component(true);
 
-		this.render_payment_section();
-		this.after_render();
+			this.render_payment_section();
+			this.after_render();
+		}
+	}
+
+	// NEW METHOD: Handle Goodwill Stock Entry
+	async create_goodwill_stock_entry(frm) {
+		frappe.dom.freeze();
+		
+		try {
+			// Store the draft invoice name before creating stock entry
+			const draft_invoice_name = frm.doc.name;
+			const draft_invoice_doctype = frm.doc.doctype;
+			
+			// Get only simple item data for Stock Entry
+			// Backend will fetch valuation rates from stock ledger
+			const goodwill_items = frm.doc.items.map(item => ({
+				item_code: item.item_code,
+				qty: flt(item.qty),  // Ensure numeric
+				uom: item.stock_uom || item.uom,
+			})).filter(item => item.qty > 0);  // Only items with qty > 0
+			
+			if (!goodwill_items.length) {
+				frappe.dom.unfreeze();
+				frappe.show_alert({
+					indicator: "orange",
+					message: __("No items in cart to process"),
+				});
+				return;
+			}
+
+			const result = await frappe.call({
+				method: "erpnext.selling.page.point_of_sale.point_of_sale.create_goodwill_stock_entry",
+				args: {
+					goodwill_entry_id: cur_pos.cart.goodwill_entry_selected,
+					items: goodwill_items,
+					customer: frm.doc.customer,
+					company: frm.doc.company,
+					warehouse: frm.doc.set_warehouse,
+				},
+			});
+			
+			frappe.dom.unfreeze();
+			
+			if (result.message) {
+				frappe.show_alert({
+					indicator: "green",
+					message: __("Stock Entry {0} created successfully for goodwill customer.", [result.message]),
+				});
+				
+				// DELETE THE DRAFT INVOICE - Goodwill customers should NOT have invoices
+				try {
+					if (draft_invoice_name) {
+						await frappe.call({
+							method: "frappe.client.delete",
+							args: {
+								doctype: draft_invoice_doctype,
+								name: draft_invoice_name,
+							},
+						});
+					}
+				} catch (delete_error) {
+					console.warn("Could not delete draft invoice:", delete_error);
+				}
+				
+				// Reset goodwill selection
+				cur_pos.cart.goodwill_entry_selected = null;
+				
+				// Clear form and load new invoice
+				this.events.reset_form();
+				cur_pos.load_new_invoice_on_pos();
+			}
+		} catch (error) {
+			frappe.dom.unfreeze();
+			frappe.msgprint({
+				indicator: "red",
+				title: __("Goodwill Stock Entry Error"),
+				message: error.responseJSON?.message || error.message || "Failed to create Stock Entry",
+			});
+			console.error("Goodwill Stock Entry Error:", error);
+		}
 	}
 
 	toggle_remarks_control() {

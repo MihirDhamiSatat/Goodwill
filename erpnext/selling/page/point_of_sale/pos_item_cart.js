@@ -192,6 +192,16 @@ erpnext.PointOfSale.ItemCart = class {
 		this.$component.on("click", ".checkout-btn", async function () {
 			if ($(this).attr("style").indexOf("--btn-primary") == -1) return;
 
+			// CHECK GOODWILL REQUIREMENT
+			if (me.is_goodwill_customer && !me.goodwill_entry_selected) {
+				frappe.show_alert({
+					indicator: "red",
+					message: __("Please select Goodwill Entry first"),
+				});
+				frappe.utils.play_sound("error");
+				return;
+			}
+
 			await me.events.checkout();
 			me.toggle_checkout_btn(false);
 			me.disable_customer_selection();
@@ -306,6 +316,7 @@ erpnext.PointOfSale.ItemCart = class {
 	make_customer_selector() {
 		this.$customer_section.html(`
 			<div class="customer-field"></div>
+			<div class="goodwill-field" style="display:none; margin-top: 8px;"></div>
 		`);
 		const me = this;
 		const allowed_customer_group = this.allowed_customer_groups || [];
@@ -336,6 +347,7 @@ erpnext.PointOfSale.ItemCart = class {
 								() => me.fetch_customer_details(this.value),
 								() => me.events.customer_details_updated(me.customer_info),
 								() => me.update_customer_section(),
+								() => me.handle_goodwill_customer(),
 								() => me.update_totals_section(),
 								() => frappe.dom.unfreeze(),
 							]);
@@ -359,9 +371,10 @@ erpnext.PointOfSale.ItemCart = class {
 						"mobile_no",
 						"image",
 						"loyalty_program",
+						"is_goodwill_customer",
 					])
 					.then(({ message }) => {
-						const { loyalty_program } = message;
+						const { loyalty_program, is_goodwill_customer } = message;
 						// if loyalty program then fetch loyalty points too
 						if (loyalty_program) {
 							frappe.call({
@@ -375,13 +388,14 @@ erpnext.PointOfSale.ItemCart = class {
 											customer,
 											loyalty_points,
 											conversion_factor,
+											is_goodwill_customer,
 										};
 										resolve();
 									}
 								},
 							});
 						} else {
-							this.customer_info = { ...message, customer };
+							this.customer_info = { ...message, customer, is_goodwill_customer };
 							resolve();
 						}
 					});
@@ -391,6 +405,86 @@ erpnext.PointOfSale.ItemCart = class {
 				this.customer_info = {};
 				resolve();
 			});
+		}
+	}
+
+	handle_goodwill_customer() {
+		const me = this;
+		// STORE goodwill customer flag on instance so it can be checked for price display
+		this.is_goodwill_customer = this.customer_info?.is_goodwill_customer;
+		
+		if (this.is_goodwill_customer) {
+			// Create wrapper if it doesn't exist
+			let $goodwill_section = this.$customer_section.find(".goodwill-field");
+			if (!$goodwill_section.length) {
+				this.$customer_section.append(`<div class="goodwill-field" style="margin-top: 8px;"></div>`);
+				$goodwill_section = this.$customer_section.find(".goodwill-field");
+			}
+			
+			$goodwill_section.show();
+			
+			// Create goodwill field if not exists
+			if (!this.goodwill_field) {
+				// Clear and create fresh
+				$goodwill_section.empty();
+				
+				this.goodwill_field = frappe.ui.form.make_control({
+					df: {
+						label: __("Goodwill"),
+						fieldtype: "Link",
+						options: "Goodwill",
+						placeholder: __("Select Goodwill"),
+						reqd: 1,
+						get_query: function () {
+							return {
+								filters: {
+									is_used: 0,
+									docstatus: 1,
+								},
+							};
+						},
+						onchange: async function () {
+							me.goodwill_entry_selected = this.value || null;
+						
+							if (me.is_goodwill_customer && me.goodwill_entry_selected) {
+								const frm = me.events.get_frm();
+								
+								// Set ALL items to ZERO PRICE using 100% discount (Frappe built-in logic)
+								// Any item, any quantity must be free for goodwill customers
+								for (let item of frm.doc.items) {
+									const original_rate = item.rate;
+									if (original_rate !== 0) {
+										// Set 100% discount = 0 price (uses Frappe's internal math)
+										await frappe.model.set_value(item.doctype, item.name, "discount_percentage", 100);
+									}
+								}
+								
+								// REFRESH cart display AFTER all prices updated
+								frm.doc.items.forEach(item => {
+									const fresh_item = me.get_item_from_frm(item);
+									if (fresh_item) {
+										me.update_item_html(fresh_item, false);
+									}
+								});
+								
+								// Update totals with new prices
+								me.update_totals_section(frm);
+							}
+						},
+					},
+					parent: $goodwill_section.get(0),
+					render_input: true,
+				});
+				this.goodwill_field.toggle_label(true);
+			}
+		} else {
+			// Hide goodwill field if not a goodwill customer
+			const $goodwill_section = this.$customer_section.find(".goodwill-field");
+			$goodwill_section.hide();
+			$goodwill_section.empty();
+			this.goodwill_field = null;
+			this.goodwill_entry_selected = null;
+			this.is_goodwill_customer = false;
 		}
 	}
 
@@ -1072,6 +1166,9 @@ erpnext.PointOfSale.ItemCart = class {
 				});
 			}
 			this.update_totals_section(frm);
+
+			// ENFORCE: Goodwill items must stay FREE after any field refresh
+			this.enforce_goodwill_pricing();
 		});
 	}
 
@@ -1098,6 +1195,9 @@ erpnext.PointOfSale.ItemCart = class {
 		this.hide_discount_control(frm.doc.additional_discount_percentage);
 		this.update_totals_section(frm);
 
+		// ENFORCE: All goodwill items must be free
+		this.enforce_goodwill_pricing();
+
 		if (frm.doc.docstatus === 1) {
 			this.$totals_section.find(".checkout-btn").css("display", "none");
 			this.$totals_section.find(".edit-cart-btn").css("display", "none");
@@ -1107,6 +1207,24 @@ erpnext.PointOfSale.ItemCart = class {
 		}
 
 		this.toggle_component(true);
+	}
+
+	// ENFORCE: Any item added for goodwill customer must be FREE (₹0)
+	// This is called after cart refresh or item render to ensure prices stay at 0
+	async enforce_goodwill_pricing() {
+		if (!this.is_goodwill_customer || !this.goodwill_entry_selected) {
+			return; // Not a goodwill transaction
+		}
+
+		const frm = this.events.get_frm();
+		if (!frm?.doc?.items) return;
+
+		// Reapply 100% discount to all items for goodwill customer
+		for (let item of frm.doc.items) {
+			if (item.discount_percentage !== 100) {
+				await frappe.model.set_value(item.doctype, item.name, "discount_percentage", 100);
+			}
+		}
 	}
 
 	toggle_component(show) {

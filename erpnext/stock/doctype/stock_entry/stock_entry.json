@@ -54,6 +54,8 @@
   "column_break_22",
   "total_incoming_value",
   "value_difference",
+  "section_break_oidj",
+  "goodwill",
   "section_break_mgqe",
   "verification_status",
   "column_break_bawx",
@@ -778,6 +780,19 @@
   {
    "fieldname": "column_break_bawx",
    "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_oidj",
+   "fieldtype": "Section Break"
+  },
+  {
+   "depends_on": "eval:doc.stock_entry_type == \"Goodwill Issue\"",
+   "fieldname": "goodwill",
+   "fieldtype": "Link",
+   "label": "Goodwill",
+   "link_filters": "[\n  [\"Goodwill\", \"docstatus\", \"=\", \"1\"],\n  [\"Goodwill\", \"is_used\", \"=\", \"0\"]\n]",
+   "mandatory_depends_on": "eval:doc.stock_entry_type == \"Goodwill Issue\"",
+   "options": "Goodwill"
   }
  ],
  "grid_page_length": 50,
@@ -786,7 +801,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-04-13 11:49:03.117278",
+ "modified": "2026-04-20 10:01:34.015598",
  "modified_by": "Administrator",
  "module": "Stock",
  "name": "Stock Entry",

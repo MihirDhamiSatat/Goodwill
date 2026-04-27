@@ -465,6 +465,13 @@ erpnext.PointOfSale.Controller = class {
 						});
 					});
 				},
+
+				reset_form: () => {
+					// Reset cart and customer selector after goodwill transaction
+					this.cart.reset_customer_selector();
+					this.cart.goodwill_entry_selected = null;
+					this.cart.is_goodwill_customer = false;
+				},
 			},
 		});
 	}
@@ -682,22 +689,50 @@ erpnext.PointOfSale.Controller = class {
 							item_row.serial_no + `\n${item.serial_no}`
 						);
 					}
+
+					// ENFORCE: Goodwill items must always stay FREE (₹0)
+					// If customer is goodwill type, reapply discount_percentage = 100 on ANY field change
+					const is_goodwill_customer = this.cart?.is_goodwill_customer;
+					if (is_goodwill_customer && field !== "discount_percentage") {
+						// Reapply 100% discount to keep item free
+						await frappe.model.set_value(item_row.doctype, item_row.name, "discount_percentage", 100);
+					}
+
 					this.update_cart_html(item_row);
 				}
 			} else {
 				if (!this.frm.doc.customer) return this.raise_customer_selection_alert();
+
+				// CHECK IF GOODWILL CUSTOMER - GOODWILL ENTRY MUST BE SELECTED
+				const goodwill_selected = this.cart && this.cart.goodwill_entry_selected;
+				if (!goodwill_selected && this.frm.doc.customer) {
+					// Check if customer is goodwill type
+					const customer_data = this.cart?.customer_info;
+					if (customer_data?.is_goodwill_customer) {
+						frappe.dom.unfreeze();
+						frappe.show_alert({
+							indicator: "red",
+							message: __("Please select Goodwill Entry first before adding items"),
+						});
+						frappe.utils.play_sound("error");
+						return;
+					}
+				}
 
 				const { item_code, batch_no, serial_no, rate, uom, stock_uom } = item;
 
 				if (!item_code) return;
 
 				if (rate == undefined || rate == 0) {
-					frappe.show_alert({
-						message: __("Price is not set for the item."),
-						indicator: "orange",
-					});
-					frappe.utils.play_sound("error");
-					return;
+					// Allow zero rate for goodwill transactions only
+					if (!goodwill_selected) {
+						frappe.show_alert({
+							message: __("Price is not set for the item."),
+							indicator: "orange",
+						});
+						frappe.utils.play_sound("error");
+						return;
+					}
 				}
 				const new_item = { item_code, batch_no, rate, uom, [field]: value, stock_uom };
 
@@ -718,6 +753,12 @@ erpnext.PointOfSale.Controller = class {
 				}
 
 				await this.trigger_new_item_events(item_row);
+
+				// ENFORCE PRICE = 0 FOR GOODWILL TRANSACTIONS
+				if (goodwill_selected) {
+					// Use 100% discount to set price to 0 (Frappe built-in math, prevents override)
+					await frappe.model.set_value(item_row.doctype, item_row.name, "discount_percentage", 100);
+				}
 
 				this.update_cart_html(item_row);
 

@@ -109,6 +109,7 @@ class StockEntry(StockController, SubcontractingInwardController):
 		fg_completed_qty: DF.Float
 		from_bom: DF.Check
 		from_warehouse: DF.Link | None
+		goodwill: DF.Link | None
 		inspection_required: DF.Check
 		is_additional_transfer_entry: DF.Check
 		is_opening: DF.Literal["No", "Yes"]
