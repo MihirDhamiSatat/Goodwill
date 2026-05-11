@@ -666,11 +666,9 @@ def create_subcenter(subcenter_name, user, parent_warehouse, company):
 	Stores reference to parent profile for traceability.
 	"""
 	try:
-		# Validate parent warehouse exists
 		if not frappe.db.exists("Warehouse", parent_warehouse):
 			frappe.throw(f"Parent Warehouse '{parent_warehouse}' does not exist")
 		
-		# Check if subcenter warehouse already exists
 		subcenter_warehouse = frappe.db.get_value(
 			"Warehouse",
 			{"parent_warehouse": parent_warehouse, "warehouse_name": subcenter_name},
@@ -679,7 +677,6 @@ def create_subcenter(subcenter_name, user, parent_warehouse, company):
 		if subcenter_warehouse:
 			frappe.throw(f"Sub Center '{subcenter_name}' already exists under this warehouse")
 		
-		# Get parent POS profile by parent warehouse
 		parent_pos_name = frappe.db.get_value(
 			"POS Profile",
 			{"warehouse": parent_warehouse},

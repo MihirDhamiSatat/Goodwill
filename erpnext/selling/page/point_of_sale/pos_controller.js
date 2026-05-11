@@ -361,7 +361,6 @@ erpnext.PointOfSale.Controller = class {
 				}
 			],
 			primary_action: async function(data) {
-				// Check if subcenter already exists
 				const exists = await frappe.db.get_list('Warehouse', {
 					filters: { 'parent_warehouse': data.parent_warehouse, 'warehouse_name': data.subcenter_name },
 					fields: ['name']
@@ -414,8 +413,6 @@ erpnext.PointOfSale.Controller = class {
 			},
 			primary_action_label: __("Create Sub Center")
 		});
-		
-		// Initially disable button
 		dialog.get_primary_btn().prop('disabled', true);
 		
 		dialog.show();
