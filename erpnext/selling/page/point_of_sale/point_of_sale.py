@@ -657,3 +657,124 @@ def create_goodwill_stock_entry(goodwill_entry_id, items, customer, company, war
 	)
 	
 	return stock_entry.name
+
+@frappe.whitelist()
+def create_subcenter(subcenter_name, user, parent_warehouse, company):
+	"""
+	Create a new sub-center with warehouse and POS profile.
+	Inherits ALL account settings, taxes, payment methods, and configurations from parent POS Profile.
+	Stores reference to parent profile for traceability.
+	"""
+	try:
+		# Validate parent warehouse exists
+		if not frappe.db.exists("Warehouse", parent_warehouse):
+			frappe.throw(f"Parent Warehouse '{parent_warehouse}' does not exist")
+		
+		# Check if subcenter warehouse already exists
+		subcenter_warehouse = frappe.db.get_value(
+			"Warehouse",
+			{"parent_warehouse": parent_warehouse, "warehouse_name": subcenter_name},
+			"name"
+		)
+		if subcenter_warehouse:
+			frappe.throw(f"Sub Center '{subcenter_name}' already exists under this warehouse")
+		
+		# Get parent POS profile by parent warehouse
+		parent_pos_name = frappe.db.get_value(
+			"POS Profile",
+			{"warehouse": parent_warehouse},
+			"name"
+		)
+		
+		if not parent_pos_name:
+			frappe.throw(f"No POS Profile found for parent warehouse '{parent_warehouse}'")
+		
+		parent_pos_doc = frappe.get_doc("POS Profile", parent_pos_name)
+		
+		# 1. Create New Warehouse
+		warehouse_doc = frappe.get_doc({
+			"doctype": "Warehouse",
+			"warehouse_name": subcenter_name,
+			"parent_warehouse": parent_warehouse,
+			"company": company,
+			"disabled": 0
+		})
+		warehouse_doc.insert()
+		warehouse_name = warehouse_doc.name
+		
+		# 2. Get cost center from parent POS Profile (NOT warehouse)
+		cost_center = parent_pos_doc.cost_center
+		
+		# 3. Create New POS Profile (Sub-Center) with ALL fields from parent
+		pos_profile_name = f"POS-{subcenter_name}"
+		
+		# Get owner email from parent POS profile if available
+		parent_owner_email = frappe.db.get_value("User", parent_pos_doc.owner or parent_pos_doc.user, "email")
+		
+		pos_profile_doc = frappe.get_doc({
+			"doctype": "POS Profile",
+			"name": pos_profile_name,
+			"company": company,
+			"warehouse": warehouse_name,
+			"cost_center": cost_center,
+			"is_subcenter": 1,
+			"parent_profile": parent_pos_name,  # Store parent POS profile reference
+			# Copy Core Settings
+			"customer": parent_pos_doc.customer,
+			"country": parent_pos_doc.country,
+			# Copy Account Settings
+			"income_account": parent_pos_doc.income_account,
+			"expense_account": parent_pos_doc.expense_account,
+			"write_off_account": parent_pos_doc.write_off_account,
+			"write_off_cost_center": parent_pos_doc.write_off_cost_center,
+			"write_off_limit": parent_pos_doc.write_off_limit,
+			"account_for_change_amount": parent_pos_doc.account_for_change_amount,
+			# Copy Tax Settings
+			"taxes_and_charges": parent_pos_doc.taxes_and_charges,
+			"tax_category": parent_pos_doc.tax_category,
+			# Copy Price & Currency Settings
+			"selling_price_list": parent_pos_doc.selling_price_list,
+			"currency": parent_pos_doc.currency,
+		})
+		
+		# Copy Item Groups
+		if parent_pos_doc.item_groups:
+			for item_group in parent_pos_doc.item_groups:
+				pos_profile_doc.append("item_groups", {
+					"item_group": item_group.item_group
+				})
+		
+		# Copy Customer Groups
+		if parent_pos_doc.customer_groups:
+			for customer_group in parent_pos_doc.customer_groups:
+				pos_profile_doc.append("customer_groups", {
+					"customer_group": customer_group.customer_group
+				})
+		
+		# Copy Payment Methods (CRITICAL) - All MOPs from parent
+		if parent_pos_doc.payments:
+			for payment in parent_pos_doc.payments:
+				pos_profile_doc.append("payments", {
+					"mode_of_payment": payment.mode_of_payment,
+					"default": payment.default,
+					"allow_in_returns": payment.allow_in_returns
+				})
+		
+		if user:
+			pos_profile_doc.append("applicable_for_users", {"user": user, "default": 1})
+
+		pos_profile_doc.insert()
+		frappe.db.commit()
+		
+		return {
+			"warehouse": warehouse_name,
+			"pos_profile": pos_profile_name,
+			"cost_center": cost_center,
+			"parent_pos_profile": parent_pos_name,
+			"user": user,
+			"company": company
+		}
+		
+	except Exception as e:
+		frappe.log_error(f"Error creating sub-center: {str(e)}")
+		frappe.throw(f"Failed to create sub-center: {str(e)}")

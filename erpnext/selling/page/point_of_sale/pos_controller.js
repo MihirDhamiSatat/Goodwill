@@ -251,6 +251,7 @@ erpnext.PointOfSale.Controller = class {
 		this.page.clear_menu();
 		this.page.add_menu_item(__("Open Form View"), this.open_form_view.bind(this), false, "Ctrl+F");
 		this.page.add_menu_item(__("Close the POS"), this.close_pos.bind(this), false, "Shift+Ctrl+C");
+		this.page.add_menu_item(__("Create Sub Center"), this.show_subcenter_dialog.bind(this), false, "Shift+Ctrl+S");
 	}
 
 	prepare_btns() {
@@ -323,6 +324,111 @@ erpnext.PointOfSale.Controller = class {
 		voucher.posting_date = frappe.datetime.now_date();
 		voucher.posting_time = frappe.datetime.now_time();
 		frappe.set_route("Form", "POS Closing Entry", voucher.name);
+	}
+	show_subcenter_dialog() {
+		const me = this;
+		const dialog = new frappe.ui.Dialog({
+			title: __("Create Sub Center"),
+			fields: [
+				{
+					fieldtype: "Data",
+					label: __("Sub Center Name"),
+					fieldname: "subcenter_name",
+					reqd: 1,
+					placeholder: __("e.g., Abad pashim - subcenter1"),
+					onchange: function() {
+						me.validate_subcenter_form(dialog);
+					}
+				},
+				{
+					fieldtype: "Link",
+					label: __("User"),
+					fieldname: "user",
+					options: "User",
+					reqd: 1,
+					onchange: function() {
+						me.validate_subcenter_form(dialog);
+					}
+				},
+				{
+					fieldtype: "Link",
+					label: __("Parent Warehouse"),
+					fieldname: "parent_warehouse",
+					options: "Warehouse",
+					reqd: 1,
+					default: me.settings.warehouse,
+					read_only: 1
+				}
+			],
+			primary_action: async function(data) {
+				// Check if subcenter already exists
+				const exists = await frappe.db.get_list('Warehouse', {
+					filters: { 'parent_warehouse': data.parent_warehouse, 'warehouse_name': data.subcenter_name },
+					fields: ['name']
+				});
+				
+				if (exists.length > 0) {
+					frappe.show_alert({
+						message: __('Sub Center with name "{0}" already exists!', [data.subcenter_name]),
+						indicator: 'red'
+					});
+					frappe.utils.play_sound('error');
+					return;
+				}
+				
+				frappe.call({
+					method: "erpnext.selling.page.point_of_sale.point_of_sale.create_subcenter",
+					args: {
+						subcenter_name: data.subcenter_name,
+						user: data.user,
+						parent_warehouse: data.parent_warehouse,
+						company: me.company
+					},
+					callback: (r) => {
+						if (!r.exc) {
+							frappe.msgprint({
+								message: __("Sub Center created successfully!<br>" +
+									"<b>Warehouse:</b> {0}<br>" +
+									"<b>POS Profile:</b> {1}", 
+									[r.message.warehouse, r.message.pos_profile]),
+								indicator: "green"
+							});
+							dialog.hide();
+						} else {
+							frappe.show_alert({
+								message: __("Error: {0}", [r.message]),
+								indicator: "red"
+							});
+							frappe.utils.play_sound("error");
+						}
+					},
+					error: (r) => {
+						frappe.dom.unfreeze();
+						frappe.show_alert({
+							message: __("Failed to create sub-center"),
+							indicator: "red"
+						});
+						frappe.utils.play_sound("error");
+					}
+				});
+			},
+			primary_action_label: __("Create Sub Center")
+		});
+		
+		// Initially disable button
+		dialog.get_primary_btn().prop('disabled', true);
+		
+		dialog.show();
+	}
+
+	validate_subcenter_form(dialog) {
+		const subcenter_name = dialog.fields_dict.subcenter_name.get_value();
+		const user = dialog.fields_dict.user.get_value();
+		const parent_warehouse = dialog.fields_dict.parent_warehouse.get_value();
+		
+		// Enable button only if all fields are filled
+		const is_valid = subcenter_name && user && parent_warehouse;
+		dialog.get_primary_btn().prop('disabled', !is_valid);
 	}
 
 	init_item_selector() {
