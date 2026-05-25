@@ -109,7 +109,6 @@ class StockEntry(StockController, SubcontractingInwardController):
 		fg_completed_qty: DF.Float
 		from_bom: DF.Check
 		from_warehouse: DF.Link | None
-		goodwill: DF.Link | None
 		inspection_required: DF.Check
 		is_additional_transfer_entry: DF.Check
 		is_opening: DF.Literal["No", "Yes"]
@@ -130,7 +129,6 @@ class StockEntry(StockController, SubcontractingInwardController):
 		purchase_receipt_no: DF.Link | None
 		purpose: DF.Literal["Material Issue", "Material Receipt", "Material Transfer", "Material Transfer for Manufacture", "Material Consumption for Manufacture", "Manufacture", "Repack", "Send to Subcontractor", "Disassemble", "Receive from Customer", "Return Raw Material to Customer", "Subcontracting Delivery", "Subcontracting Return"]
 		remarks: DF.Text | None
-		root_cause: DF.Literal["", "HO Mistake", "Store Mistake", "Transit Loss"]
 		sales_invoice_no: DF.Link | None
 		scan_barcode: DF.Data | None
 		select_print_heading: DF.Link | None
@@ -152,7 +150,6 @@ class StockEntry(StockController, SubcontractingInwardController):
 		total_outgoing_value: DF.Currency
 		use_multi_level_bom: DF.Check
 		value_difference: DF.Currency
-		verification_status: DF.Literal["Pending", "Verified", "Issue Found"]
 		work_order: DF.Link | None
 	# end: auto-generated types
 

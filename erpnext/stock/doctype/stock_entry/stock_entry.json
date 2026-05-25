@@ -54,12 +54,6 @@
   "column_break_22",
   "total_incoming_value",
   "value_difference",
-  "section_break_oidj",
-  "goodwill",
-  "section_break_mgqe",
-  "verification_status",
-  "column_break_bawx",
-  "root_cause",
   "additional_costs_section",
   "additional_costs",
   "total_additional_costs",
@@ -757,42 +751,6 @@
    "fieldtype": "Link",
    "label": "Cost Center",
    "options": "Cost Center"
-  },
-  {
-   "depends_on": "eval:doc.add_to_transit==1",
-   "fieldname": "verification_status",
-   "fieldtype": "Select",
-   "label": "Verification Status",
-   "options": "Pending\nVerified\nIssue Found"
-  },
-  {
-   "fieldname": "section_break_mgqe",
-   "fieldtype": "Section Break"
-  },
-  {
-   "allow_on_submit": 1,
-   "depends_on": "eval:doc.verification_status==\"Issue Found\"",
-   "fieldname": "root_cause",
-   "fieldtype": "Select",
-   "label": "Root Cause",
-   "options": "\nHO Mistake\nStore Mistake\nTransit Loss"
-  },
-  {
-   "fieldname": "column_break_bawx",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "section_break_oidj",
-   "fieldtype": "Section Break"
-  },
-  {
-   "depends_on": "eval:doc.stock_entry_type == \"Goodwill Issue\"",
-   "fieldname": "goodwill",
-   "fieldtype": "Link",
-   "label": "Goodwill",
-   "link_filters": "[\n  [\"Goodwill\", \"docstatus\", \"=\", \"1\"],\n  [\"Goodwill\", \"is_used\", \"=\", \"0\"]\n]",
-   "mandatory_depends_on": "eval:doc.stock_entry_type == \"Goodwill Issue\"",
-   "options": "Goodwill"
   }
  ],
  "grid_page_length": 50,
@@ -801,7 +759,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-04-20 10:01:34.015598",
+ "modified": "2026-05-25 10:16:15.722264",
  "modified_by": "Administrator",
  "module": "Stock",
  "name": "Stock Entry",
